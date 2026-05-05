@@ -83,14 +83,31 @@ labfiles/foundry-chat/python/chat-app/
 
 ### Configuration File (.env)
 
+**What is .env?** 
+A configuration file that stores settings like a computer's contact list. It tells your program:
+- Where to find the AI model (server address)
+- Which version of the model to use
+
 ```env
+# Server address where the AI model lives
+# This tells your program how to connect to Microsoft Foundry
+# The service endpoint URL for Azure OpenAI
 AZURE_OPENAI_ENDPOINT="https://samabrains-ai-lab-resource.openai.azure.com/openai/v1"
+
+# The name of the model deployment to use
+# Think of this as "which AI version" (like GPT-4.1 vs GPT-3.5)
 MODEL_DEPLOYMENT="gpt-4.1"
 ```
 
-**Important:** 
-- `AZURE_OPENAI_ENDPOINT` is the **service endpoint** (not the project endpoint)
-- `MODEL_DEPLOYMENT` is the exact name assigned when deploying the model
+**Important notes for non-coders:**
+- `AZURE_OPENAI_ENDPOINT` - The web address (URL) where your model lives (like a phone number)
+- `MODEL_DEPLOYMENT` - The exact name of the AI model version being used
+
+**Why use .env instead of writing settings in the code?**
+- 🔒 **Security:** Don't expose server addresses in code that gets shared
+- 🔄 **Flexibility:** Easy to change settings without editing code
+- 📝 **Organization:** Keeps configuration separate from code
+- 🚀 **Deployment:** Different settings for testing vs production
 
 ---
 
@@ -101,26 +118,31 @@ MODEL_DEPLOYMENT="gpt-4.1"
 The **OpenAI SDK** provides a Python interface to communicate with language models.
 
 ```python
+# Import the OpenAI SDK library to communicate with language models
 from openai import OpenAI
+# Import AsyncOpenAI for non-blocking (asynchronous) operations
 from openai import AsyncOpenAI
 ```
 
 **Two main classes:**
-- `OpenAI()` - Synchronous client (blocking calls)
-- `AsyncOpenAI()` - Asynchronous client (non-blocking calls)
+- `OpenAI()` - Synchronous client (blocking calls - app waits for response)
+- `AsyncOpenAI()` - Asynchronous client (non-blocking calls - app continues while waiting)
 
 ### 2. Azure Identity Authentication
 
 Instead of using API keys, modern applications use **token-based authentication** via Azure Entra ID.
 
 ```python
+# Import Azure authentication tools (instead of using passwords/API keys)
+# DefaultAzureCredential: automatically finds your Azure login credentials
+# get_bearer_token_provider: creates tokens that prove you're authorized
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 ```
 
 **How it works:**
-1. `DefaultAzureCredential()` - Automatically finds available credentials (user login, managed identity, etc.)
-2. `get_bearer_token_provider()` - Generates bearer tokens for authentication
-3. Token scope: `https://ai.azure.com/.default` - Authorizes access to Azure AI services
+1. `DefaultAzureCredential()` - Automatically finds available credentials (your Azure login)
+2. `get_bearer_token_provider()` - Creates a token machine that generates proof-of-identity
+3. Token scope: `https://ai.azure.com/.default` - Tells Azure: "I want access to AI services"
 
 **Advantages:**
 - ✅ No API key exposure in code
@@ -133,11 +155,15 @@ from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 The `python-dotenv` package loads configuration from `.env` files:
 
 ```python
-from dotenv import load_dotenv
-import os
+# Import tools for reading configuration files
+from dotenv import load_dotenv  # Reads .env file
+import os  # Access environment variables
 
+# Load() reads the .env file and makes variables available
 load_dotenv()
+# Get the endpoint URL from .env (the address of your AI model)
 endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+# Get the model name from .env (like "gpt-4.1")
 deployment = os.getenv("MODEL_DEPLOYMENT")
 ```
 
@@ -151,36 +177,49 @@ deployment = os.getenv("MODEL_DEPLOYMENT")
 
 #### Step 1: Import Namespaces
 ```python
+# Import OpenAI SDK - lets us talk to language models
 from openai import OpenAI
+# Import Azure authentication - proves who we are to Azure
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+# Import config file reader - loads our settings from .env
 from dotenv import load_dotenv
+# Import OS tools - helps access system settings
 import os
 ```
 
 #### Step 2: Load Configuration
 ```python
+# Load settings from the .env file
 load_dotenv()
+# Read the endpoint URL from .env (where our AI model lives)
 azure_openai_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+# Read the model name from .env (which version of GPT we're using)
 model_deployment = os.getenv("MODEL_DEPLOYMENT")
 ```
 
 #### Step 3: Create OpenAI Client
 ```python
+# Create a token provider that will generate temporary access tokens
+# DefaultAzureCredential() - uses your Azure login
+# "https://ai.azure.com/.default" - tells Azure we want AI service access
 token_provider = get_bearer_token_provider(
     DefaultAzureCredential(), "https://ai.azure.com/.default"
 )
 
+# Create the OpenAI client (this is like opening a phone line to the AI model)
+# base_url: the server address where our model is running
+# api_key: uses the token provider to authenticate (instead of a password)
 openai_client = OpenAI(
     base_url=azure_openai_endpoint,
     api_key=token_provider
 )
 ```
 
-**What's happening:**
-- `DefaultAzureCredential()` - Gets credentials from current Azure login
-- `token_provider` - Creates a function that generates bearer tokens
-- `base_url` - Points to your Foundry model endpoint
-- `api_key` - Uses token provider instead of static API key
+**What's happening (in plain English):**
+- `DefaultAzureCredential()` - "Use my Azure login to prove I'm authorized"
+- `token_provider` - "Create tokens that prove I'm authorized (refreshed automatically)"
+- `base_url` - "Connect to this server address where the AI model lives"
+- `api_key` - "Use tokens for authentication instead of a hardcoded password"
 
 ---
 
@@ -189,19 +228,25 @@ openai_client = OpenAI(
 #### ChatCompletions API (Legacy Pattern)
 
 ```python
+# Request a response from the model (older, more verbose way)
 completion = openai_client.chat.completions.create(
+    # Which model to use (e.g., "gpt-4.1")
     model=model_deployment,
+    # The conversation messages (old approach using message array)
     messages=[
+        # System message: defines the AI's personality and role
         {
-            "role": "system",
-            "content": "You are a helpful AI assistant..."
+            "role": "system",  # This is an instruction for the AI
+            "content": "You are a helpful AI assistant..."  # The instruction itself
         },
+        # User message: what the human typed
         {
-            "role": "user",
-            "content": input_text
+            "role": "user",  # This came from the user
+            "content": input_text  # The actual text they typed
         }
     ]
 )
+# Extract and print the response (it's nested deep inside the response object)
 print(completion.choices[0].message.content)
 ```
 
@@ -214,19 +259,24 @@ print(completion.choices[0].message.content)
 #### Responses API (Modern Pattern)
 
 ```python
+# Request a response from the model (newer, simpler way)
 response = openai_client.responses.create(
+    # Which model to use (e.g., "gpt-4.1")
     model=model_deployment,
+    # AI's instructions/personality (simpler than system messages)
     instructions="You are a helpful AI assistant...",
+    # User's input (direct parameter - no message array needed)
     input=input_text
 )
+# Print the response (it's directly accessible, not nested)
 print(response.output_text)
 ```
 
-**Improvements:**
-- Simpler syntax - `instructions` instead of system message
-- Direct `input` parameter instead of messages array
-- Built-in support for response IDs for conversation tracking
-- More intuitive for single-turn interactions
+**Improvements (why this is better):**
+- Simpler syntax - `instructions` is cleaner than system messages
+- Direct `input` parameter - no need for message arrays
+- Built-in support for response IDs - tracks conversation automatically
+- More intuitive - feels like natural conversation
 
 **Key Difference:**
 | Aspect | ChatCompletions | Responses API |
@@ -254,35 +304,42 @@ Assistant: "I don't know what 'it' refers to..." ❌
 #### The Solution: Response IDs
 
 ```python
-# Initialize response tracking
+# Variable to store the ID of the previous response (starting as empty/None)
 last_response_id = None
 
-# First interaction
+# ===== FIRST INTERACTION =====
+# Ask the model a question
 response = openai_client.responses.create(
-    model=model_deployment,
-    instructions="You are a helpful AI assistant...",
-    input="Tell me about ELIZA",
-    previous_response_id=last_response_id  # None on first call
+    model=model_deployment,  # Use GPT-4.1
+    instructions="You are a helpful AI assistant...",  # AI's role
+    input="Tell me about ELIZA",  # User's question
+    # previous_response_id: link to previous conversation (None = first message)
+    previous_response_id=last_response_id  # No previous response yet
 )
+# Print the AI's answer
 print(response.output_text)
-last_response_id = response.id  # Save for next interaction
+# Save this response's ID so we can link to it in the next message
+last_response_id = response.id  # "Remember this conversation"
 
-# Second interaction
+# ===== SECOND INTERACTION =====
+# Ask a follow-up question (AI remembers context from first response)
 response = openai_client.responses.create(
-    model=model_deployment,
-    instructions="You are a helpful AI assistant...",
-    input="How does it compare to modern LLMs?",
-    previous_response_id=last_response_id  # Pass previous ID
+    model=model_deployment,  # Use GPT-4.1
+    instructions="You are a helpful AI assistant...",  # AI's role (same)
+    input="How does it compare to modern LLMs?",  # Follow-up question
+    # "It" refers to ELIZA - but AI knows because we linked the conversation!
+    previous_response_id=last_response_id  # Link to previous response (provides context)
 )
 print(response.output_text)
-last_response_id = response.id
+# Save this response ID for the next turn
+last_response_id = response.id  # Update for next message
 ```
 
-**How it works:**
-1. Each response has a unique `response.id`
-2. Pass `previous_response_id=last_response_id` to link responses
-3. Model receives context from the previous response
-4. Conversation context is maintained
+**How it works (in simple terms):**
+1. Each response gets a unique ID (like a receipt number)
+2. `previous_response_id` links the current message to the previous one
+3. The model reads the previous response to understand context
+4. Result: AI remembers what it said before and understands "it" in follow-ups
 
 **Advanced Usage:**
 You can also reference any previous response, not just the immediately preceding one:
@@ -305,47 +362,58 @@ response = openai_client.responses.create(
 Large responses can take several seconds to arrive completely. Without streaming, the app appears frozen:
 
 ```python
-# Without streaming - app waits silently
+# Without streaming - the app waits for the complete response
 response = openai_client.responses.create(...)
-print(response.output_text)  # Long pause before anything prints
+# Long pause here while waiting for the entire response
+# Then suddenly the whole response appears at once
+print(response.output_text)  # Very long delay before anything prints
 ```
 
 #### Streaming Implementation
 
 ```python
-# With streaming - response appears incrementally
+# With streaming - response appears word by word as it arrives
+# Request response with stream=True (get pieces as they come)
 stream = openai_client.responses.create(
-    model=model_deployment,
-    instructions="You are a helpful AI assistant...",
-    input=input_text,
-    previous_response_id=last_response_id,
-    stream=True  # Enable streaming
+    model=model_deployment,  # Use GPT-4.1
+    instructions="You are a helpful AI assistant...",  # AI's role
+    input=input_text,  # User's question
+    previous_response_id=last_response_id,  # Link to previous for context
+    stream=True  # IMPORTANT: Enable streaming (get pieces not whole response)
 )
 
+# Loop through each piece of the response as it arrives
 for event in stream:
+    # Check what type of event this is
     if event.type == "response.output_text.delta":
-        print(event.delta, end="")  # Print each chunk
+        # This is a chunk of text (like "hello" or " world")
+        # Print it immediately without waiting for more
+        print(event.delta, end="")  # end="" means don't add newline after each chunk
+    
     elif event.type == "response.completed":
-        last_response_id = event.response.id  # Save ID from completed event
-print()  # Final newline
+        # This event signals the response is completely finished
+        # Save the response ID for the next conversation turn
+        last_response_id = event.response.id  # Store ID from completed event
+
+print()  # Add final newline after streaming completes
 ```
 
-**Event Types:**
-- `response.output_text.delta` - Partial text chunk (stream this)
-- `response.completed` - Response finished, contains final `response.id`
+**Event Types (what they mean):**
+- `response.output_text.delta` - A chunk of text arriving (print it now!)
+- `response.completed` - The response is finished (save the ID)
 
-**Stream Workflow:**
-1. Request with `stream=True`
-2. Iterate through events as they arrive
-3. Print text chunks immediately (delta events)
-4. Capture response ID from completed event
-5. Add final newline after stream ends
+**Stream Workflow (step by step):**
+1. Request with `stream=True` - "Send me pieces as they come"
+2. Loop through events as they arrive - "Process each piece"
+3. Print text chunks immediately - "Show them right away"
+4. Capture response ID from completed event - "Remember this response"
+5. Add final newline - "Clean formatting"
 
-**Benefits:**
-- ✅ Immediate visual feedback to user
-- ✅ Appears responsive during long responses
-- ✅ Can process chunks while more arrive
-- ✅ Better UX for production applications
+**Benefits (why streaming is better):**
+- ✅ Immediate visual feedback - user sees text appearing
+- ✅ Appears responsive - doesn't look like app is frozen
+- ✅ Better UX - feels more like natural conversation
+- ✅ Production quality - real apps use streaming
 
 ---
 
@@ -367,48 +435,62 @@ response = await async_client.responses.create(...)  # Non-blocking
 #### Async Implementation
 
 ```python
-import asyncio
-from openai import AsyncOpenAI
+# Import async tools (for non-blocking operations)
+import asyncio  # Tool for running async functions
+from openai import AsyncOpenAI  # Async version of OpenAI client
+# Import async Azure authentication
 from azure.identity.aio import DefaultAzureCredential, get_bearer_token_provider
 
-# Setup async client
+# === SETUP ===
+# Create credential object (gets your Azure login)
 credential = DefaultAzureCredential()
+# Create token provider (generates temporary access tokens)
 token_provider = get_bearer_token_provider(
-    credential, "https://ai.azure.com/.default"
+    credential, "https://ai.azure.com/.default"  # Request AI service access
 )
 
+# Create async OpenAI client (non-blocking version)
 async_client = AsyncOpenAI(
-    base_url=azure_openai_endpoint,
-    api_key=token_provider
+    base_url=azure_openai_endpoint,  # Server where model lives
+    api_key=token_provider  # Use tokens for authentication
 )
 
-# Use async/await in main function
+# === MAIN ASYNC FUNCTION ===
+# "async def" means this function can pause and resume (non-blocking)
 async def main():
-    # Track responses
+    # Variable to track previous response (for context)
     last_response_id = None
     
+    # Conversation loop
     while True:
+        # Get input from user
         input_text = input('\nEnter a prompt (or type "quit" to exit): ')
         if input_text.lower() == "quit":
-            break
+            break  # Exit the loop
         
-        # Await non-blocking response
+        # "await" pauses here until response arrives (app doesn't freeze)
+        # Other things can happen while waiting for the response
         response = await async_client.responses.create(
-            model=model_deployment,
-            instructions="You are a helpful AI assistant...",
-            input=input_text,
-            previous_response_id=last_response_id
+            model=model_deployment,  # Use GPT-4.1
+            instructions="You are a helpful AI assistant...",  # AI's role
+            input=input_text,  # User's question
+            previous_response_id=last_response_id  # Link for context
         )
         
+        # Print the AI's response
         print("Assistant:", response.output_text)
+        # Save this response ID for next turn
         last_response_id = response.id
 
-# Cleanup
+# === CLEANUP ===
 finally:
+    # Close the credential (clean up async resources)
     await credential.close()
 
-# Run async main
+# === RUN THE ASYNC FUNCTION ===
+# This code runs when script is executed
 if __name__ == '__main__':
+    # asyncio.run() starts the async function
     asyncio.run(main())
 ```
 
@@ -464,123 +546,176 @@ Need responsive UI/multiple operations?
 ### Synchronous Chat App (chat-app.py)
 
 ```python
-import os
-from dotenv import load_dotenv
-from openai import OpenAI
-from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+# Import required libraries
+import os  # For system operations
+from dotenv import load_dotenv  # For loading .env configuration
+from openai import OpenAI  # OpenAI SDK (blocking version)
+from azure.identity import DefaultAzureCredential, get_bearer_token_provider  # Azure authentication
 
 def main():
+    # Clear the terminal screen (cls for Windows, clear for Mac/Linux)
     os.system('cls' if os.name == 'nt' else 'clear')
     
     try:
-        # Load configuration
+        # === LOAD CONFIGURATION ===
+        # Read settings from .env file
         load_dotenv()
+        # Get the server address where our model lives
         azure_openai_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+        # Get the model name (e.g., "gpt-4.1")
         model_deployment = os.getenv("MODEL_DEPLOYMENT")
         
-        # Initialize OpenAI client with token-based auth
+        # === INITIALIZE OPENAI CLIENT ===
+        # Create token provider using Azure login credentials
         token_provider = get_bearer_token_provider(
             DefaultAzureCredential(), "https://ai.azure.com/.default"
         )
+        # Create the OpenAI client (connection to the model)
         openai_client = OpenAI(
-            base_url=azure_openai_endpoint,
-            api_key=token_provider
+            base_url=azure_openai_endpoint,  # Server address
+            api_key=token_provider  # Authentication tokens
         )
         
-        # Track conversation
+        # === CONVERSATION TRACKING ===
+        # Variable to store previous response ID (for context)
         last_response_id = None
         
-        # Conversation loop
+        # === MAIN CONVERSATION LOOP ===
         while True:
+            # Get input from user
             input_text = input('\nEnter a prompt (or type "quit" to exit): ')
-            if input_text.lower() == "quit":
-                break
-            if len(input_text) == 0:
-                print("Please enter a prompt.")
-                continue
             
-            # Stream response with context tracking
+            # Check if user wants to exit
+            if input_text.lower() == "quit":
+                break  # Exit the loop
+            
+            # Check if user entered anything
+            if len(input_text) == 0:
+                print("Please enter a prompt.")  # Ask for input
+                continue  # Go back to top of loop
+            
+            # === SEND REQUEST AND GET STREAMING RESPONSE ===
+            # Request response with stream=True (get it word by word)
             stream = openai_client.responses.create(
-                model=model_deployment,
-                instructions="You are a helpful AI assistant...",
-                input=input_text,
-                previous_response_id=last_response_id,
-                stream=True
+                model=model_deployment,  # Use GPT-4.1
+                instructions="You are a helpful AI assistant...",  # AI's personality
+                input=input_text,  # User's question
+                previous_response_id=last_response_id,  # Link for conversation context
+                stream=True  # Enable streaming (get chunks not whole response)
             )
             
+            # === PROCESS STREAMING RESPONSE ===
+            # Loop through each event/chunk as it arrives
             for event in stream:
+                # Check if this is a text chunk
                 if event.type == "response.output_text.delta":
+                    # Print the chunk immediately (end="" prevents extra newlines)
                     print(event.delta, end="")
+                
+                # Check if response is complete
                 elif event.type == "response.completed":
+                    # Save this response's ID for next turn (maintains context)
                     last_response_id = event.response.id
-            print()
+            
+            print()  # Add newline after streaming completes
     
+    # === ERROR HANDLING ===
     except Exception as ex:
+        # If anything goes wrong, print the error message
         print(ex)
 
+# === RUN THE PROGRAM ===
+# This runs when script is executed
 if __name__ == '__main__':
-    main()
+    main()  # Call the main function
 ```
 
 ### Asynchronous Chat App (chat-async.py)
 
 ```python
-import os
-import asyncio
-from dotenv import load_dotenv
-from openai import AsyncOpenAI
+# Import required libraries
+import os  # For system operations
+import asyncio  # For async/await functionality
+from dotenv import load_dotenv  # For loading .env configuration
+from openai import AsyncOpenAI  # Async OpenAI SDK (non-blocking version)
+# Import async Azure authentication (note: .aio = async I/O)
 from azure.identity.aio import DefaultAzureCredential, get_bearer_token_provider
 
+# "async def" declares this function as asynchronous (can pause and resume)
 async def main():
+    # Clear the terminal screen
     os.system('cls' if os.name == 'nt' else 'clear')
     
     try:
-        # Load configuration
+        # === LOAD CONFIGURATION ===
+        # Read settings from .env file
         load_dotenv()
+        # Get the server address where our model lives
         azure_openai_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+        # Get the model name (e.g., "gpt-4.1")
         model_deployment = os.getenv("MODEL_DEPLOYMENT")
         
-        # Initialize async OpenAI client
+        # === INITIALIZE ASYNC OPENAI CLIENT ===
+        # Create credential object (gets your Azure login)
         credential = DefaultAzureCredential()
+        # Create token provider using async credentials
         token_provider = get_bearer_token_provider(
             credential, "https://ai.azure.com/.default"
         )
+        # Create async OpenAI client (non-blocking version)
         async_client = AsyncOpenAI(
-            base_url=azure_openai_endpoint,
-            api_key=token_provider
+            base_url=azure_openai_endpoint,  # Server address
+            api_key=token_provider  # Authentication tokens
         )
         
-        # Track conversation
+        # === CONVERSATION TRACKING ===
+        # Variable to store previous response ID (for context)
         last_response_id = None
         
-        # Conversation loop
+        # === MAIN CONVERSATION LOOP ===
         while True:
+            # Get input from user
             input_text = input('\nEnter a prompt (or type "quit" to exit): ')
-            if input_text.lower() == "quit":
-                break
-            if len(input_text) == 0:
-                print("Please enter a prompt.")
-                continue
             
-            # Await async response with context
+            # Check if user wants to exit
+            if input_text.lower() == "quit":
+                break  # Exit the loop
+            
+            # Check if user entered anything
+            if len(input_text) == 0:
+                print("Please enter a prompt.")  # Ask for input
+                continue  # Go back to top of loop
+            
+            # === AWAIT ASYNC RESPONSE (NON-BLOCKING) ===
+            # "await" pauses here until response arrives
+            # But the app doesn't freeze - other things can happen meanwhile
             response = await async_client.responses.create(
-                model=model_deployment,
-                instructions="You are a helpful AI assistant...",
-                input=input_text,
-                previous_response_id=last_response_id
+                model=model_deployment,  # Use GPT-4.1
+                instructions="You are a helpful AI assistant...",  # AI's personality
+                input=input_text,  # User's question
+                previous_response_id=last_response_id  # Link for conversation context
             )
             
+            # Print the AI's response
             print("Assistant:", response.output_text)
+            # Save this response's ID for next turn
             last_response_id = response.id
     
+    # === ERROR HANDLING ===
     except Exception as ex:
+        # If anything goes wrong, print the error message
         print(ex)
     
+    # === CLEANUP ===
     finally:
-        # Close async client
+        # "finally" runs whether there was an error or not
+        # Close the credential and clean up async resources
         await credential.close()
 
+# === RUN THE PROGRAM ===
+# This runs when script is executed
 if __name__ == '__main__':
+    # asyncio.run() starts and runs the async main function
     asyncio.run(main())
 ```
 

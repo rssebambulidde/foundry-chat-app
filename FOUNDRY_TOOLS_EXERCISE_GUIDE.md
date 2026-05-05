@@ -118,17 +118,19 @@ response = openai_client.responses.create(
 
 ```python
 {
+    # Tell the model we're using file_search tool
     "type": "file_search",
-    "vector_store_ids": [vector_store.id]
+    # List the vector stores to search (can have multiple)
+    "vector_store_ids": [vector_store.id]  # Pass the store ID
 }
 ```
 
-**How it works:**
-1. Model receives query "What hotels in SF?"
-2. Query is converted to embedding
-3. Vector store finds similar chunks
-4. Results passed back to model
-5. Model incorporates into response
+**How it works (step by step):**
+1. User asks: "What hotels in SF?"
+2. Model converts question to a vector (embedding)
+3. Vector store finds similar document chunks
+4. Results are passed back to the model
+5. Model reads the results and incorporates into response
 
 ### 3. web_search Tool
 
@@ -136,15 +138,18 @@ response = openai_client.responses.create(
 
 ```python
 {
+    # Tell the model we're using web_search tool
     "type": "web_search"
+    # No configuration needed - searches the whole internet
 }
 ```
 
-**How it works:**
-1. Model recognizes need for current info
-2. Calls web_search automatically
-3. Gets real-time search results
-4. Uses results in response
+**How it works (step by step):**
+1. Model recognizes: "This question needs current info"
+2. Model calls web_search tool automatically
+3. Tool searches the internet and gets results
+4. Results passed back to model
+5. Model reads results and incorporates into response
 
 **Use cases:**
 - Current events and dates
@@ -159,30 +164,37 @@ response = openai_client.responses.create(
 ### Creating a Vector Store
 
 ```python
-# Create empty vector store
+# Create an empty vector store (database for embeddings)
+# This is like creating an empty filing cabinet
 vector_store = openai_client.vector_stores.create(
-    name="travel-brochures"
+    name="travel-brochures"  # Give it a descriptive name
 )
+# After this, we have an empty vector store waiting for files
 ```
 
 ### Uploading Files
 
 ```python
-# Upload PDFs and get embeddings automatically
+# Get list of all PDF files from brochures folder
+# glob.glob() searches for files matching a pattern
+# "brochures/*.pdf" means "all PDF files in brochures folder"
 file_streams = [open(f, "rb") for f in glob.glob("brochures/*.pdf")]
 
+# Upload files and automatically create embeddings
+# "upload_and_poll" means: upload and wait until all files are processed
 file_batch = openai_client.vector_stores.file_batches.upload_and_poll(
-    vector_store_id=vector_store.id,
-    files=file_streams
+    vector_store_id=vector_store.id,  # Which vector store to put files in
+    files=file_streams  # List of files to upload
 )
 
+# Print how many files were successfully processed
 print(f"Uploaded {file_batch.file_counts.completed} files")
 ```
 
-**Key parameters:**
-- `upload_and_poll()` - Waits for all files to be processed
-- `file_streams` - List of open file objects
-- Returns batch status with completion count
+**Key parameters (what they mean):**
+- `upload_and_poll()` - Upload files AND wait for processing to finish
+- `file_streams` - List of open files (PDFs in this case)
+- `file_batch.file_counts.completed` - How many files finished processing
 
 ### Vector Store Lifecycle
 
@@ -200,72 +212,107 @@ print(f"Uploaded {file_batch.file_counts.completed} files")
 ### Complete Tools App Structure
 
 ```python
-import os
-from dotenv import load_dotenv
-import glob
-from openai import OpenAI
-from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+# Import required libraries
+import os  # For system operations
+from dotenv import load_dotenv  # For loading .env configuration
+import glob  # For finding files by pattern
+from openai import OpenAI  # OpenAI SDK
+from azure.identity import DefaultAzureCredential, get_bearer_token_provider  # Azure authentication
 
 def main():
-    # 1. Load configuration
-    load_dotenv()
+    # === STEP 1: LOAD CONFIGURATION ===
+    load_dotenv()  # Read .env file
+    # Get the server address where our model lives
     azure_openai_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+    # Get the model name (e.g., "gpt-4.1")
     model_deployment = os.getenv("MODEL_DEPLOYMENT")
     
-    # 2. Initialize client
+    # === STEP 2: INITIALIZE OPENAI CLIENT ===
+    # Create token provider using Azure login
     token_provider = get_bearer_token_provider(
         DefaultAzureCredential(), "https://ai.azure.com/.default"
     )
+    # Create connection to the model
     openai_client = OpenAI(
-        base_url=azure_openai_endpoint,
-        api_key=token_provider
+        base_url=azure_openai_endpoint,  # Server address
+        api_key=token_provider  # Authentication tokens
     )
     
-    # 3. Create vector store and upload files
+    # === STEP 3: CREATE VECTOR STORE AND UPLOAD FILES ===
+    # Create an empty vector store (database for documents)
     vector_store = openai_client.vector_stores.create(
-        name="travel-brochures"
+        name="travel-brochures"  # Name for this document collection
     )
+    # Find all PDF files in the brochures folder
     file_streams = [open(f, "rb") for f in glob.glob("brochures/*.pdf")]
+    # Upload files and create embeddings automatically
     file_batch = openai_client.vector_stores.file_batches.upload_and_poll(
-        vector_store_id=vector_store.id,
-        files=file_streams
+        vector_store_id=vector_store.id,  # Which store to upload to
+        files=file_streams  # Files to upload
     )
+    # Close all open file handles (clean up)
     for f in file_streams:
         f.close()
     
-    # 4. Chat loop with tools
+    # === STEP 4: CHAT LOOP WITH TOOLS ===
+    # Variable to track previous response (for conversation context)
     last_response_id = None
+    
     while True:
+        # Get input from user
         input_text = input('\nEnter a question: ')
+        # Check if user wants to exit
         if input_text.lower() == "quit":
-            break
+            break  # Exit the loop
         
-        # 5. Call API with tools
+        # === STEP 5: CALL API WITH TOOLS ===
+        # Request response with both file_search and web_search tools
         response = openai_client.responses.create(
-            model=model_deployment,
-            instructions="You are a travel assistant...",
-            input=input_text,
-            previous_response_id=last_response_id,
+            model=model_deployment,  # Use GPT-4.1
+            instructions="You are a travel assistant...",  # AI's personality/role
+            input=input_text,  # User's question
+            previous_response_id=last_response_id,  # Link for conversation context
             tools=[
+                # Tool 1: Search uploaded documents (our brochures)
                 {
-                    "type": "file_search",
-                    "vector_store_ids": [vector_store.id]
+                    "type": "file_search",  # This tool searches files
+                    "vector_store_ids": [vector_store.id]  # Search in our brochures
                 },
+                # Tool 2: Search the internet
                 {
-                    "type": "web_search"
+                    "type": "web_search"  # This tool searches the web
                 }
             ]
         )
+        # Print the AI's response
         print(response.output_text)
+        # Save this response's ID for next turn (maintains conversation context)
         last_response_id = response.id
 ```
 
 ### Configuration (.env)
 
+**What is .env?** 
+A configuration file that stores settings like a computer's contact list. It tells your program:
+- Where to find the AI model (server address)
+- Which version of the model to use
+
 ```env
+# Server address where the AI model lives
+# This tells your program how to connect to Microsoft Foundry
+# Example: https://samabrains-ai-lab-resource.openai.azure.com/openai/v1
 AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/openai/v1"
+
+# The name of the model deployment to use
+# Think of this as \"which AI version\" (like GPT-4.1 vs GPT-3.5)
 MODEL_DEPLOYMENT="gpt-4.1"
 ```
+
+**Why use .env instead of writing settings in the code?**
+- 🔒 **Security:** Don't expose server addresses in code that gets shared
+- 🔄 **Flexibility:** Easy to change settings without editing code
+- 📝 **Organization:** Keeps configuration separate from code
+- 🚀 **Deployment:** Different settings for testing vs production
 
 ---
 
@@ -274,27 +321,31 @@ MODEL_DEPLOYMENT="gpt-4.1"
 ### Pattern 1: Single Tool (file_search)
 
 ```python
+# Give the model only ONE tool: search documents
 tools=[
     {
-        "type": "file_search",
-        "vector_store_ids": [vector_store.id]
+        "type": "file_search",  # This tool searches files/documents
+        "vector_store_ids": [vector_store.id]  # Which vector store to search
     }
 ]
 ```
 
-**Use case:** Document-only Q&A (internal knowledge base)
+**Use case:** Document-only Q&A (company knowledge base, internal documents only)
+**Example:** Customer asking "What's in your employee handbook?"
 
 ### Pattern 2: Single Tool (web_search)
 
 ```python
+# Give the model only ONE tool: search the internet
 tools=[
     {
-        "type": "web_search"
+        "type": "web_search"  # This tool searches the internet
     }
 ]
 ```
 
-**Use case:** Current events, news, real-time info
+**Use case:** Current events, news, real-time information only
+**Example:** User asking "What's happening in SF next month?"
 
 ### Pattern 3: Multiple Tools (Recommended)
 
